@@ -1,0 +1,39 @@
+{
+  "name": "koishi-plugin-morfonicapixivbot",
+  "description": "Pixiv 搜图插件，支持关键词搜索、多种排行榜和推荐插画",
+  "version": "0.2.3",
+  "main": "lib/index.js",
+  "typings": "lib/index.d.ts",
+  "files": [
+    "lib",
+    "dist"
+  ],
+  "license": "MIT",
+  "keywords": [
+    "chatbot",
+    "koishi",
+    "plugin",
+    "pixiv",
+    "image",
+    "search"
+  ],
+  "peerDependencies": {
+    "koishi": "^4.18.7"
+  },
+  "dependencies": {
+    "@book000/pixivts": "^0.45.74",
+    "axios": "^1.6.0",
+    "https-proxy-agent": "^7.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/OWNER/REPO.git"
+  },
+  "koishi": {
+    "browser": true,
+    "description": {
+      "en": "Search Pixiv images",
+      "zh": "Pixiv 搜图插件，支持关键词搜索、多种排行榜和推荐插画"
+    }
+  }
+}
