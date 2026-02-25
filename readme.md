@@ -3,7 +3,7 @@
 [![npm](https://img.shields.io/npm/v/koishi-plugin-morfonicapixivbot?style=flat-square)](https://www.npmjs.com/package/koishi-plugin-morfonicapixivbot)
 [![npm](https://img.shields.io/npm/l/koishi-plugin-morfonicapixivbot?style=flat-square)](https://www.npmjs.com/package/koishi-plugin-morfonicapixivbot)
 
-**最新版本**: 0.2.3
+**最新版本**: 0.2.5
 
 Koishi 插件，用于在聊天机器人中集成 Pixiv 图片搜索和排行榜功能。
 
@@ -38,12 +38,12 @@ npm install koishi-plugin-morfonicapixivbot
 
 ### 搜索命令
 
-| 命令 | 别名 | 说明 |
-|------|------|------|
-| `搜图 [关键词]` | `pixiv` | 使用关键词搜索 Pixiv 图片 |
-| `搜图 [关键词] --sort <类型>` | - | 指定排序方式：`popular`(人气) / `date`(最新) |
-| `搜图 [关键词] --target <类型>` | - | 指定搜索范围：`tag`(标签) / `exact`(精确) / `title`(标题) / `keyword`(关键词) |
-| `搜图 [关键词] --duration <类型>` | - | 指定时间范围：`day`(日) / `week`(周) / `month`(月) |
+| 命令                         | 别名 | 说明 |
+|----------------------------|------|------|
+| `搜图 [关键词]`                 | `pixiv` | 使用关键词搜索 Pixiv 图片 |
+| `--sort <类型> 搜图 [关键词]`     | - | 指定排序方式：`popular`(人气) / `date`(最新) |
+| `--target <类型> 搜图 [关键词]`   | - | 指定搜索范围：`tag`(标签) / `exact`(精确) / `title`(标题) / `keyword`(关键词) |
+| `--duration <类型> 搜图 [关键词]` | - | 指定时间范围：`day`(日) / `week`(周) / `month`(月) |
 
 ### 排行榜命令
 
@@ -77,13 +77,13 @@ npm install koishi-plugin-morfonicapixivbot
 机器人：[发送 3 张图片]
        这里是 3 张图片，跟我说"下一页"查看更多~
 
-用户：搜图 初音ミク --sort date
+用户：--sort date 搜图 初音ミク
 机器人：[发送按最新上传排序的 3 张图片]
 
-用户：搜图 初音ミク --target title
+用户：--target title 搜图 初音ミク
 机器人：[发送标题中包含关键词的 3 张图片]
 
-用户：搜图 初音ミク --sort popular --duration week
+用户：--sort popular --duration week 搜图 初音ミク
 机器人：[发送周内人气最高的 3 张图片]
 
 # 排行榜命令
@@ -126,15 +126,13 @@ npm install koishi-plugin-morfonicapixivbot
 
 - [@book000/pixivts](https://www.npmjs.com/package/@book000/pixivts) - Pixiv API TypeScript 客户端
 - `axios` - HTTP 请求库，用于下载图片
-- `https-proxy-agent` - HTTPS 代理支持
 
-### 核心机制
+### 核心内容
 
 1. **身份认证** - 使用 Refresh Token 获取访问令牌
 2. **图片下载** - 通过代理直接下载图片并作为消息发送
 3. **状态管理** - 使用 `Map<string, SearchState>` 存储每个用户的搜索状态
 4. **内容过滤** - 根据 `xRestrict` 字段和标签过滤 R18 内容
-5. **错误处理** - 详细的日志输出和友好的错误提示
 
 ### 网络架构
 

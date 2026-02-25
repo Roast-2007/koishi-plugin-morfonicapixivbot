@@ -1,7 +1,7 @@
 {
   "name": "koishi-plugin-morfonicapixivbot",
   "description": "Pixiv 搜图插件，支持关键词搜索、多种排行榜和推荐插画",
-  "version": "0.2.3",
+  "version": "0.2.5",
   "main": "lib/index.js",
   "typings": "lib/index.d.ts",
   "files": [
@@ -22,18 +22,17 @@
   },
   "dependencies": {
     "@book000/pixivts": "^0.45.74",
-    "axios": "^1.6.0",
-    "https-proxy-agent": "^7.0.0"
+    "axios": "^1.6.0"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/OWNER/REPO.git"
+    "url": "git+https://github.com/Roast-2007/koishi-plugin-morfonicapixivbot"
   },
   "koishi": {
     "browser": true,
     "description": {
-      "en": "Search Pixiv images",
-      "zh": "Pixiv 搜图插件，支持关键词搜索、多种排行榜和推荐插画"
+      "en": "Search Pixiv images.Please install @book000/pixivts and axios to use this plugin.",
+      "zh": "Pixiv 搜图插件，支持关键词搜索、多种排行榜和推荐插画.请安装 @book000/pixivts 和 axios 来使用此插件。"
     }
   }
 }
