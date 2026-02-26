@@ -129,30 +129,45 @@ export function apply(ctx: Context, config: Config) {
     }
   }
 
+  type PixivClient = Awaited<ReturnType<typeof Pixiv.of>>
+  let pixivClient: PixivClient | null = null
+  let pixivClientPromise: Promise<PixivClient> | null = null
+
   // 初始化 Pixiv 客户端
   const initPixiv = async () => {
+    if (pixivClient) return pixivClient
+    if (pixivClientPromise) return pixivClientPromise
+
     log('info', '正在初始化 Pixiv 客户端...')
     log('info', `Node 版本：${process.version}`)
     logProxyEnv('初始化前')
-    try {
-      const client = await Pixiv.of(config.refreshToken)
-      log('info', 'Pixiv 客户端初始化成功', { userId: client.userId })
-      return client
-    } catch (error: any) {
-      log('error', 'Pixiv 认证失败', {
-        message: error.message,
-        stack: error.stack,
-        response: toShortBody(error.response?.data),
-        status: error.response?.status,
-        headers: summarizeHeaders(error.response?.headers),
-        code: error.code,
-        address: error.address,
-        syscall: error.syscall,
-        hostname: error.hostname,
-        port: error.port,
+
+    pixivClientPromise = Pixiv.of(config.refreshToken)
+      .then((client) => {
+        pixivClient = client
+        log('info', 'Pixiv 客户端初始化成功', { userId: client.userId })
+        return client
       })
-      throw new Error(`Pixiv 认证失败：${error.message}`)
-    }
+      .catch((error: any) => {
+        log('error', 'Pixiv 认证失败', {
+          message: error.message,
+          stack: error.stack,
+          response: toShortBody(error.response?.data),
+          status: error.response?.status,
+          headers: summarizeHeaders(error.response?.headers),
+          code: error.code,
+          address: error.address,
+          syscall: error.syscall,
+          hostname: error.hostname,
+          port: error.port,
+        })
+        throw new Error(`Pixiv 认证失败：${error.message}`)
+      })
+      .finally(() => {
+        pixivClientPromise = null
+      })
+
+    return pixivClientPromise
   }
 
   // 下载图片并发送
@@ -205,7 +220,7 @@ export function apply(ctx: Context, config: Config) {
       }
 
       const response = await axios.get(imageUrl, axiosConfig)
-      const imageBuffer = Buffer.from(response.data, 'binary')
+      const imageBuffer = Buffer.isBuffer(response.data) ? response.data : Buffer.from(response.data)
 
       log('info', '图片下载成功', {
         illustId: illust.id,
@@ -857,19 +872,17 @@ export function apply(ctx: Context, config: Config) {
 
         // 获取插画详情
         const pixiv = await initPixiv()
-        const toSend: any[] = []
         const count = Math.min(config.searchResultCount, favoriteIds.length)
-
-        for (let i = 0; i < count; i++) {
+        const detailResults = await Promise.all(favoriteIds.slice(0, count).map(async (illustId) => {
           try {
-            const result = await pixiv.illustDetail({ illustId: favoriteIds[i] })
-            if (result.data.illust) {
-              toSend.push(result.data.illust)
-            }
+            const result = await pixiv.illustDetail({ illustId })
+            return result.data.illust ?? null
           } catch (e: any) {
-            log('warn', '获取插画详情失败', { illustId: favoriteIds[i], message: e.message })
+            log('warn', '获取插画详情失败', { illustId, message: e.message })
+            return null
           }
-        }
+        }))
+        const toSend = detailResults.filter((illust) => !!illust)
 
         if (toSend.length === 0) {
           return '无法获取收藏的插画详情'
@@ -961,19 +974,16 @@ export function apply(ctx: Context, config: Config) {
           }
 
           const idsToFetch = favoriteIds.slice(startIdx, endIdx)
-          const toSend: any[] = []
-
-          // 获取插画详情
-          for (const illustId of idsToFetch) {
+          const detailResults = await Promise.all(idsToFetch.map(async (illustId) => {
             try {
               const detailResult = await pixiv.illustDetail({ illustId })
-              if (detailResult.data.illust) {
-                toSend.push(detailResult.data.illust)
-              }
+              return detailResult.data.illust ?? null
             } catch (e: any) {
               log('warn', '获取插画详情失败', { illustId, message: e.message })
+              return null
             }
-          }
+          }))
+          const toSend = detailResults.filter((illust) => !!illust)
 
           if (toSend.length === 0) {
             return '无法获取收藏的插画详情'
