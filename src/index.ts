@@ -12,6 +12,8 @@ export interface Config {
   searchResultCount: number
   /** 是否包含 R18 内容 */
   enableR18: boolean
+  /** 是否包含 AI 生成内容 */
+  enableAI: boolean
 }
 
 export const Config: Schema<Config> = Schema.object({
@@ -27,14 +29,21 @@ export const Config: Schema<Config> = Schema.object({
   enableR18: Schema.boolean()
     .default(false)
     .description('是否包含 R18 内容'),
+  enableAI: Schema.boolean()
+    .default(false)
+    .description('是否包含 AI 生成内容'),
 })
 
 interface SearchState {
-  type: 'search' | 'ranking' | 'recommended'
+  type: 'search' | 'ranking' | 'recommended' | 'author' | 'favorites'
   keyword?: string
   rankingMode?: RankingMode
   searchTarget?: SearchTarget
   searchSort?: SearchSort
+  authorId?: number
+  authorIllusts?: any[]
+  favoriteIds?: number[]
+  lastIllustId?: number
   offset: number
   nextUrl: string | null
 }
@@ -42,6 +51,16 @@ interface SearchState {
 export function apply(ctx: Context, config: Config) {
   // 存储用户搜索状态的 Map
   const searchStates = new Map<string, SearchState>()
+
+  // 定义收藏表
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ;(ctx.model as any).extend('pixiv_favorites', {
+    id: { type: 'integer', autoIncrement: true, primary: true },
+    userId: { type: 'string' },
+    platform: { type: 'string' },
+    illustId: { type: 'integer', index: true },
+    createdAt: { type: 'integer' },
+  })
 
   // 获取 sessionId
   const getSessionId = (session: any) => {
@@ -204,6 +223,16 @@ export function apply(ctx: Context, config: Config) {
 
       await session.send(message)
       log('info', '图片发送成功', { illustId: illust.id, page })
+
+      // 更新最近一次展示的插画 ID
+      const sessionId = `${session.platform}:${session.userId}`
+      const state = searchStates.get(sessionId)
+      if (state) {
+        searchStates.set(sessionId, {
+          ...state,
+          lastIllustId: illust.id,
+        })
+      }
     } catch (error: any) {
       log('error', '发送图片失败', {
         illustId: illust.id,
@@ -216,20 +245,23 @@ export function apply(ctx: Context, config: Config) {
     }
   }
 
-  // 过滤 R18 内容
+  // 过滤 R18 和 AI 内容
   const filterIllusts = (illusts: any[]) => {
     if (config.enableR18) {
-      log('info', 'R18 模式已启用，不过滤内容')
-      return illusts
+      log('info', 'R18 模式已启用，不过滤 R18 内容')
     }
+    if (config.enableAI) {
+      log('info', 'AI 模式已启用，不过滤 AI 内容')
+    }
+
     const filtered = illusts.filter(illust => {
-      // 检查 xRestrict 标记
-      if (illust.xRestrict) {
+      // 检查 xRestrict 标记 (R18)
+      if (!config.enableR18 && illust.xRestrict) {
         log('info', '过滤 R18 图片 (xRestrict)', { illustId: illust.id, title: illust.title })
         return false
       }
-      // 检查标签
-      if (illust.tags) {
+      // 检查 R18 标签
+      if (!config.enableR18 && illust.tags) {
         const hasR18Tag = illust.tags.some((tag: any) => {
           const tagName = (tag as any).name?.toLowerCase() || ''
           return tagName.includes('r-18') || tagName.includes('r18')
@@ -239,9 +271,20 @@ export function apply(ctx: Context, config: Config) {
           return false
         }
       }
+      // 检查 AI 生成标签
+      if (!config.enableAI && illust.tags) {
+        const hasAITag = illust.tags.some((tag: any) => {
+          const tagName = (tag as any).name?.toLowerCase() || ''
+          return tagName.includes('ai') || tagName.includes('ai生成') || tagName.includes('生成ai')
+        })
+        if (hasAITag) {
+          log('info', '过滤 AI 生成图片', { illustId: illust.id, title: illust.title })
+          return false
+        }
+      }
       return true
     })
-    log('info', `R18 过滤完成：${illusts.length} -> ${filtered.length}`)
+    log('info', `内容过滤完成：${illusts.length} -> ${filtered.length}`)
     return filtered
   }
 
@@ -662,6 +705,194 @@ export function apply(ctx: Context, config: Config) {
       }
     })
 
+  // 按作者 ID 搜索作品命令
+  log('info', '注册搜作者命令')
+  ctx.command('搜作者 <authorId:number>', '根据作者 ID 搜索该作者的作品')
+    .alias('作者作品')
+    .action(async ({ session }, authorId: number) => {
+      if (!authorId) {
+        return '请输入要查询的作者 ID 哦~，比如：搜作者 12345678'
+      }
+
+      const sessionId = getSessionId(session)
+      log('info', `收到搜作者请求`, { sessionId, authorId })
+
+      try {
+        const pixiv = await initPixiv()
+
+        log('info', '获取作者作品', { authorId })
+
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const result = await (pixiv as any).userIllusts({
+          userId: authorId,
+          offset: 0,
+        })
+
+        log('info', '作者作品响应原始数据', {
+          status: result.status,
+          illustsCount: result.data.illusts?.length || 0,
+          nextUrl: result.data.next_url,
+        })
+
+        const illusts = filterIllusts(result.data.illusts || [])
+
+        if (illusts.length === 0) {
+          log('warn', '作者无作品', { authorId })
+          return '该作者还没有作品哦......'
+        }
+
+        // 保存搜索状态
+        searchStates.set(sessionId, {
+          type: 'author',
+          authorId,
+          authorIllusts: illusts,
+          offset: illusts.length,
+          nextUrl: result.data.next_url || null,
+        })
+        log('info', '搜作者状态已保存', { sessionId })
+
+        // 发送图片
+        const toSend = illusts.slice(0, config.searchResultCount)
+        log('info', `准备发送 ${toSend.length} 张作者图片`)
+        for (const illust of toSend) {
+          await sendIllust(session, illust)
+        }
+
+        return `这里是 ${toSend.length} 张图片，跟我说"下一页"查看更多~`
+      } catch (error: any) {
+        log('error', '获取作者作品失败', {
+          authorId,
+          sessionId,
+          message: error.message,
+          stack: error.stack,
+          response: error.response?.data,
+          status: error.response?.status,
+          code: error.code,
+        })
+        return `获取作者作品失败：${error.message || '请求失败，请重试'}`
+      }
+    })
+
+  // 收藏命令
+  log('info', '注册收藏命令')
+  ctx.command('收藏', '收藏最近一次展示的插画')
+    .alias('fav')
+    .action(async ({ session }) => {
+      const sessionId = getSessionId(session)
+      const state = searchStates.get(sessionId)
+
+      if (!state || !state.lastIllustId) {
+        return '没有可收藏的图片哦~请先使用"搜图"或"每日热门"等命令展示图片'
+      }
+
+      const illustId = state.lastIllustId
+
+      try {
+        // 检查是否已经收藏过
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const existing = await ctx.database.get('pixiv_favorites' as any, {
+          userId: session.userId,
+          platform: session.platform,
+          illustId,
+        })
+
+        if (existing.length > 0) {
+          return '这张图片已经收藏过了哦~'
+        }
+
+        // 添加收藏
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        await ctx.database.create('pixiv_favorites' as any, {
+          userId: session.userId,
+          platform: session.platform,
+          illustId,
+          createdAt: Date.now(),
+        })
+
+        log('info', '收藏成功', { sessionId, illustId })
+        return `收藏成功！插画 ID: ${illustId}`
+      } catch (error: any) {
+        log('error', '收藏失败', {
+          sessionId,
+          illustId,
+          message: error.message,
+          stack: error.stack,
+        })
+        return `收藏失败：${error.message || '请重试'}`
+      }
+    })
+
+  // 查询最爱命令
+  log('info', '注册查询最爱命令')
+  ctx.command('查询最爱', '查看已收藏的插画列表')
+    .alias('favorites')
+    .action(async ({ session }) => {
+      const sessionId = getSessionId(session)
+      log('info', `收到查询最爱请求`, { sessionId })
+
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const favorites = await ctx.database.get('pixiv_favorites' as any, {
+          userId: session.userId,
+          platform: session.platform,
+        })
+
+        if (favorites.length === 0) {
+          return '你还没有收藏任何插画哦~使用"收藏"命令来收藏图片吧！'
+        }
+
+        // 按收藏时间倒序排列
+        const sortedFavorites = favorites.sort((a: any, b: any) => b.createdAt - a.createdAt)
+        const favoriteIds = sortedFavorites.map((f: any) => f.illustId)
+
+        // 保存搜索状态
+        searchStates.set(sessionId, {
+          type: 'favorites',
+          favoriteIds,
+          offset: 0,
+          nextUrl: null,
+        })
+
+        // 获取插画详情
+        const pixiv = await initPixiv()
+        const toSend: any[] = []
+        const count = Math.min(config.searchResultCount, favoriteIds.length)
+
+        for (let i = 0; i < count; i++) {
+          try {
+            const result = await pixiv.illustDetail({ illustId: favoriteIds[i] })
+            if (result.data.illust) {
+              toSend.push(result.data.illust)
+            }
+          } catch (e: any) {
+            log('warn', '获取插画详情失败', { illustId: favoriteIds[i], message: e.message })
+          }
+        }
+
+        if (toSend.length === 0) {
+          return '无法获取收藏的插画详情'
+        }
+
+        // 发送图片
+        for (const illust of toSend) {
+          await sendIllust(session, illust)
+        }
+
+        const total = favoriteIds.length
+        if (total > config.searchResultCount) {
+          return `共收藏了 ${total} 张插画，跟我说"下一页"查看更多~`
+        }
+        return `显示 ${toSend.length} 张收藏插画`
+      } catch (error: any) {
+        log('error', '查询最爱失败', {
+          sessionId,
+          message: error.message,
+          stack: error.stack,
+        })
+        return `查询失败：${error.message || '请重试'}`
+      }
+    })
+
   // 下一页命令
   log('info', '注册下一页命令')
   ctx.command('下一页', '查看下一页搜索结果')
@@ -710,6 +941,82 @@ export function apply(ctx: Context, config: Config) {
           result = await pixiv.illustRecommended({
             offset: state.offset,
           })
+        } else if (state.type === 'author') {
+          // 作者作品：使用已获取的作品列表进行分页
+          log('info', '继续获取作者作品', {
+            authorId: state.authorId,
+            offset: state.offset,
+            totalIllusts: state.authorIllusts?.length || 0,
+          })
+          const allIllusts = state.authorIllusts || []
+          const nextIllusts = allIllusts.slice(state.offset, state.offset + config.searchResultCount)
+
+          if (nextIllusts.length === 0) {
+            searchStates.delete(sessionId)
+            log('info', '作者没有更多作品了，清除搜索状态', { sessionId })
+            return '看起来没有更多图片了呢......'
+          }
+
+          // 发送图片
+          for (const illust of nextIllusts) {
+            await sendIllust(session, illust)
+          }
+
+          // 更新偏移量
+          searchStates.set(sessionId, {
+            ...state,
+            offset: state.offset + nextIllusts.length,
+          })
+
+          return `已发送 ${nextIllusts.length} 张图片，输入"下一页"查看更多`
+        } else if (state.type === 'favorites') {
+          // 收藏列表：使用已获取的收藏 ID 列表进行分页
+          log('info', '继续获取收藏插画', {
+            offset: state.offset,
+            totalFavorites: state.favoriteIds?.length || 0,
+          })
+
+          const favoriteIds = state.favoriteIds || []
+          const startIdx = state.offset
+          const endIdx = Math.min(startIdx + config.searchResultCount, favoriteIds.length)
+
+          if (startIdx >= favoriteIds.length) {
+            searchStates.delete(sessionId)
+            log('info', '没有更多收藏了，清除搜索状态', { sessionId })
+            return '看起来没有更多图片了呢......'
+          }
+
+          const idsToFetch = favoriteIds.slice(startIdx, endIdx)
+          const toSend: any[] = []
+
+          // 获取插画详情
+          for (const illustId of idsToFetch) {
+            try {
+              const detailResult = await pixiv.illustDetail({ illustId })
+              if (detailResult.data.illust) {
+                toSend.push(detailResult.data.illust)
+              }
+            } catch (e: any) {
+              log('warn', '获取插画详情失败', { illustId, message: e.message })
+            }
+          }
+
+          if (toSend.length === 0) {
+            return '无法获取收藏的插画详情'
+          }
+
+          // 发送图片
+          for (const illust of toSend) {
+            await sendIllust(session, illust)
+          }
+
+          // 更新偏移量
+          searchStates.set(sessionId, {
+            ...state,
+            offset: state.offset + toSend.length,
+          })
+
+          return `已发送 ${toSend.length} 张图片，输入"下一页"查看更多`
         } else {
           log('warn', '未知的搜索状态', { state })
           return '搜索状态异常，请重新开始搜索'
@@ -767,9 +1074,11 @@ export function apply(ctx: Context, config: Config) {
       refreshToken: config.refreshToken ? '***' + config.refreshToken.slice(-4) : 'empty',
       searchResultCount: config.searchResultCount,
       enableR18: config.enableR18,
+      enableAI: config.enableAI,
     },
     commands: [
       '搜图 [keywords] [--sort <type>] [--target <type>] [--duration <type>]',
+      '搜作者 <authorId>',
       '每日热门',
       '每周热门',
       '每月热门',
@@ -782,6 +1091,8 @@ export function apply(ctx: Context, config: Config) {
       'R18 每周 (需启用 R18)',
       '推荐插画',
       '插画详情 <illustId>',
+      '收藏 / fav',
+      '查询最爱 / favorites',
       '下一页',
       'pixiv-test',
     ],

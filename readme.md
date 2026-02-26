@@ -3,8 +3,6 @@
 [![npm](https://img.shields.io/npm/v/koishi-plugin-morfonicapixivbot?style=flat-square)](https://www.npmjs.com/package/koishi-plugin-morfonicapixivbot)
 [![npm](https://img.shields.io/npm/l/koishi-plugin-morfonicapixivbot?style=flat-square)](https://www.npmjs.com/package/koishi-plugin-morfonicapixivbot)
 
-**最新版本**: 0.2.5
-
 Koishi 插件，用于在聊天机器人中集成 Pixiv 图片搜索和排行榜功能。
 
 ## 功能特性
@@ -41,9 +39,9 @@ npm install koishi-plugin-morfonicapixivbot
 | 命令                         | 别名 | 说明 |
 |----------------------------|------|------|
 | `搜图 [关键词]`                 | `pixiv` | 使用关键词搜索 Pixiv 图片 |
-| `--sort <类型> 搜图 [关键词]`     | - | 指定排序方式：`popular`(人气) / `date`(最新) |
-| `--target <类型> 搜图 [关键词]`   | - | 指定搜索范围：`tag`(标签) / `exact`(精确) / `title`(标题) / `keyword`(关键词) |
-| `--duration <类型> 搜图 [关键词]` | - | 指定时间范围：`day`(日) / `week`(周) / `month`(月) |
+| `搜图 --sort <类型> [关键词]`     | - | 指定排序方式：`popular`(人气) / `date`(最新) |
+| `搜图 --target <类型> [关键词]`   | - | 指定搜索范围：`tag`(标签) / `exact`(精确) / `title`(标题) / `keyword`(关键词) |
+| `搜图 --duration <类型> [关键词]` | - | 指定时间范围：`day`(日) / `week`(周) / `month`(月) |
 
 ### 排行榜命令
 
@@ -77,13 +75,13 @@ npm install koishi-plugin-morfonicapixivbot
 机器人：[发送 3 张图片]
        这里是 3 张图片，跟我说"下一页"查看更多~
 
-用户：--sort date 搜图 初音ミク
+用户：搜图 --sort date 初音ミク
 机器人：[发送按最新上传排序的 3 张图片]
 
-用户：--target title 搜图 初音ミク
+用户：搜图 --target title 初音ミク
 机器人：[发送标题中包含关键词的 3 张图片]
 
-用户：--sort popular --duration week 搜图 初音ミク
+用户：搜图 --sort popular --duration week 初音ミク
 机器人：[发送周内人气最高的 3 张图片]
 
 # 排行榜命令
