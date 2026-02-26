@@ -35,13 +35,12 @@ export const Config: Schema<Config> = Schema.object({
 })
 
 interface SearchState {
-  type: 'search' | 'ranking' | 'recommended' | 'author' | 'favorites'
+  type: 'search' | 'ranking' | 'recommended' | 'favorites'
   keyword?: string
   rankingMode?: RankingMode
   searchTarget?: SearchTarget
   searchSort?: SearchSort
   authorId?: number
-  authorIllusts?: any[]
   favoriteIds?: number[]
   lastIllustId?: number
   offset: number
@@ -53,13 +52,15 @@ export function apply(ctx: Context, config: Config) {
   const searchStates = new Map<string, SearchState>()
 
   // 定义收藏表
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  ;(ctx.model as any).extend('pixiv_favorites', {
+  // @ts-expect-error - pixiv_favorites is a custom table
+  ctx.model.extend('pixiv_favorites', {
     id: { type: 'integer', autoIncrement: true, primary: true },
     userId: { type: 'string' },
     platform: { type: 'string' },
-    illustId: { type: 'integer', index: true },
+    illustId: { type: 'integer' },
     createdAt: { type: 'integer' },
+  }, {
+    primary: ['id'],
   })
 
   // 获取 sessionId
@@ -720,12 +721,14 @@ export function apply(ctx: Context, config: Config) {
       try {
         const pixiv = await initPixiv()
 
-        log('info', '获取作者作品', { authorId })
+        log('info', '搜索作者作品', { authorId })
 
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const result = await (pixiv as any).userIllusts({
-          userId: authorId,
+        // 使用 searchIllust API 的 searchAim 参数来搜索特定作者的作品
+        const result = await pixiv.searchIllust({
+          word: `user_id:${authorId}`,
           offset: 0,
+          searchTarget: SearchTarget.KEYWORD,
+          sort: SearchSort.DATE_DESC,
         })
 
         log('info', '作者作品响应原始数据', {
@@ -743,9 +746,11 @@ export function apply(ctx: Context, config: Config) {
 
         // 保存搜索状态
         searchStates.set(sessionId, {
-          type: 'author',
+          type: 'search',
+          keyword: `user_id:${authorId}`,
           authorId,
-          authorIllusts: illusts,
+          searchTarget: SearchTarget.KEYWORD,
+          searchSort: SearchSort.DATE_DESC,
           offset: illusts.length,
           nextUrl: result.data.next_url || null,
         })
@@ -789,8 +794,7 @@ export function apply(ctx: Context, config: Config) {
 
       try {
         // 检查是否已经收藏过
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const existing = await ctx.database.get('pixiv_favorites' as any, {
+        const existing = await (ctx.database as any).get('pixiv_favorites', {
           userId: session.userId,
           platform: session.platform,
           illustId,
@@ -800,14 +804,13 @@ export function apply(ctx: Context, config: Config) {
           return '这张图片已经收藏过了哦~'
         }
 
-        // 添加收藏
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        await ctx.database.create('pixiv_favorites' as any, {
+        // 添加收藏 - 使用 upsert 并指定唯一键
+        await (ctx.database as any).upsert('pixiv_favorites', [{
           userId: session.userId,
           platform: session.platform,
           illustId,
           createdAt: Date.now(),
-        })
+        }], ['userId', 'platform', 'illustId'])
 
         log('info', '收藏成功', { sessionId, illustId })
         return `收藏成功！插画 ID: ${illustId}`
@@ -831,8 +834,7 @@ export function apply(ctx: Context, config: Config) {
       log('info', `收到查询最爱请求`, { sessionId })
 
       try {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const favorites = await ctx.database.get('pixiv_favorites' as any, {
+        const favorites = await (ctx.database as any).get('pixiv_favorites', {
           userId: session.userId,
           platform: session.platform,
         })
@@ -941,34 +943,6 @@ export function apply(ctx: Context, config: Config) {
           result = await pixiv.illustRecommended({
             offset: state.offset,
           })
-        } else if (state.type === 'author') {
-          // 作者作品：使用已获取的作品列表进行分页
-          log('info', '继续获取作者作品', {
-            authorId: state.authorId,
-            offset: state.offset,
-            totalIllusts: state.authorIllusts?.length || 0,
-          })
-          const allIllusts = state.authorIllusts || []
-          const nextIllusts = allIllusts.slice(state.offset, state.offset + config.searchResultCount)
-
-          if (nextIllusts.length === 0) {
-            searchStates.delete(sessionId)
-            log('info', '作者没有更多作品了，清除搜索状态', { sessionId })
-            return '看起来没有更多图片了呢......'
-          }
-
-          // 发送图片
-          for (const illust of nextIllusts) {
-            await sendIllust(session, illust)
-          }
-
-          // 更新偏移量
-          searchStates.set(sessionId, {
-            ...state,
-            offset: state.offset + nextIllusts.length,
-          })
-
-          return `已发送 ${nextIllusts.length} 张图片，输入"下一页"查看更多`
         } else if (state.type === 'favorites') {
           // 收藏列表：使用已获取的收藏 ID 列表进行分页
           log('info', '继续获取收藏插画', {

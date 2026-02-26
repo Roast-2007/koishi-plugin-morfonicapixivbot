@@ -1,7 +1,7 @@
 {
   "name": "koishi-plugin-morfonicapixivbot",
   "description": "Pixiv 搜图插件，支持关键词搜索、多种排行榜和推荐插画",
-  "version": "0.3.0",
+  "version": "0.3.2",
   "main": "lib/index.js",
   "typings": "lib/index.d.ts",
   "files": [

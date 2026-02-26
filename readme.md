@@ -13,6 +13,9 @@ Koishi 插件，用于在聊天机器人中集成 Pixiv 图片搜索和排行榜
 - **插画详情** - 根据 ID 查询特定插画作品
 - **分页浏览** - 支持「下一页」命令查看更多结果
 - **R18 过滤** - 可配置是否包含 R18 内容
+- **AI 生成内容过滤** - 可配置是否包含 AI 生成作品
+- **按作者搜索** - 根据作者 ID 搜索其作品
+- **收藏功能** - 收藏喜欢的插画，支持持久化存储
 - **多页图片支持** - 自动处理多页插画
 - **连接测试** - 内置诊断命令验证配置
 
@@ -31,6 +34,7 @@ npm install koishi-plugin-morfonicapixivbot
 | `refreshToken` | `string` | 必填 | Pixiv OAuth Refresh Token，用于身份认证 |
 | `searchResultCount` | `number` | `3` | 每次搜索/排行榜返回的图片数量 (1-10) |
 | `enableR18` | `boolean` | `false` | 是否包含 R18 内容 |
+| `enableAI` | `boolean` | `false` | 是否包含 AI 生成内容 |
 
 ## 命令列表
 
@@ -42,6 +46,14 @@ npm install koishi-plugin-morfonicapixivbot
 | `搜图 --sort <类型> [关键词]`     | - | 指定排序方式：`popular`(人气) / `date`(最新) |
 | `搜图 --target <类型> [关键词]`   | - | 指定搜索范围：`tag`(标签) / `exact`(精确) / `title`(标题) / `keyword`(关键词) |
 | `搜图 --duration <类型> [关键词]` | - | 指定时间范围：`day`(日) / `week`(周) / `month`(月) |
+| `搜作者 <作者 ID>`              | `作者作品` | 根据作者 ID 搜索其作品 |
+
+### 收藏命令
+
+| 命令 | 别名 | 说明 |
+|------|------|------|
+| `收藏` | `fav` | 收藏最近一次展示的插画 |
+| `查询最爱` | `favorites` | 查看已收藏的插画列表 |
 
 ### 排行榜命令
 
@@ -64,7 +76,9 @@ npm install koishi-plugin-morfonicapixivbot
 |------|------|------|
 | `推荐插画` | `推荐` / `pixiv 推荐` | 获取 Pixiv 个性化推荐插画 |
 | `插画详情 <ID>` | `详情` / `pixiv 详情` | 根据 ID 查询插画详情 |
-| `下一页` | `next-page` | 查看当前搜索/排行榜的下一页结果 |
+| `收藏` | `fav` | 收藏最近一次展示的插画 |
+| `查询最爱` | `favorites` | 查看已收藏的插画列表 |
+| `下一页` | `next-page` | 查看当前搜索/排行榜/收藏的下一页结果 |
 | `pixiv-test` | `测图` | 测试 Pixiv 连接和 Token 配置是否正常 |
 
 ## 使用示例
@@ -83,6 +97,11 @@ npm install koishi-plugin-morfonicapixivbot
 
 用户：搜图 --sort popular --duration week 初音ミク
 机器人：[发送周内人气最高的 3 张图片]
+
+# 按作者搜索
+用户：搜作者 12345678
+机器人：[发送该作者的 3 张作品]
+       这里是 3 张图片，跟我说"下一页"查看更多~
 
 # 排行榜命令
 用户：每日热门
@@ -104,6 +123,17 @@ npm install koishi-plugin-morfonicapixivbot
 
 用户：插画详情 12345678
 机器人：[发送 ID 为 12345678 的插画]
+
+# 收藏命令
+用户：搜图 初音ミク
+机器人：[发送 3 张图片]
+
+用户：收藏
+机器人：收藏成功！插画 ID: 12345678
+
+用户：查询最爱
+机器人：[发送已收藏的插画]
+       共收藏了 X 张插画，跟我说"下一页"查看更多~
 
 # 分页命令
 用户：下一页
@@ -130,7 +160,9 @@ npm install koishi-plugin-morfonicapixivbot
 1. **身份认证** - 使用 Refresh Token 获取访问令牌
 2. **图片下载** - 通过代理直接下载图片并作为消息发送
 3. **状态管理** - 使用 `Map<string, SearchState>` 存储每个用户的搜索状态
-4. **内容过滤** - 根据 `xRestrict` 字段和标签过滤 R18 内容
+4. **内容过滤** - 根据 `xRestrict` 字段和标签过滤 R18 和 AI 生成内容
+5. **收藏功能** - 使用 Koishi 数据库持久化存储用户收藏
+6. **按作者搜索** - 使用关键词搜索 API 搜索特定作者的作品
 
 ### 网络架构
 
